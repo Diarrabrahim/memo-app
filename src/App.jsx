@@ -3,6 +3,7 @@ import React, { useMemo, useState, useRef, useEffect } from "react";
 const tabs = [
   { id: "home", label: "Accueil", icon: "home" },
   { id: "memo", label: "Memo IA", icon: "spark" },
+  { id: "planning", label: "Planning", icon: "calendar" },
   { id: "settings", label: "Paramètres", icon: "settings" },
 ];
 
@@ -17,27 +18,105 @@ const learningActions = [
   { label: "Fiches de Révision", icon: "flashcard" },
 ];
 
-const waveformBars = Array.from({ length: 15 }, () => Math.floor(Math.random() * 24) + 12);
+const waveformBars = Array.from({ length: 15 }, (_, index) => 16 + ((index * 9) % 22));
 
 function App() {
   const [activeTab, setActiveTab] = useState("memo");
   const [isRecording, setIsRecording] = useState(false);
-  const recordingIntervalRef = useRef(null);
+  const [reminders, setReminders] = useState([
+    { id: 1, course: "Épidémiologie", date: "2026-10-10", time: "14:00", status: "active" },
+    { id: 2, course: "Biostatistique", date: "2026-10-11", time: "10:30", status: "active" },
+  ]);
+  const [formData, setFormData] = useState({ course: "", date: "", time: "" });
+  const [notification, setNotification] = useState(null);
+  const animationKeyRef = useRef(0);
+  const remindersCheckRef = useRef(null);
 
+  // Format date for display
+  const formatDate = (dateStr) => {
+    const date = new Date(dateStr);
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    if (dateStr === today.toISOString().split("T")[0]) return "Aujourd'hui";
+    if (dateStr === tomorrow.toISOString().split("T")[0]) return "Demain";
+    return date.toLocaleDateString("fr-FR", { weekday: "short", month: "short", day: "numeric" });
+  };
+
+  // Check reminders every minute
   useEffect(() => {
-    if (isRecording) {
-      recordingIntervalRef.current = setInterval(() => {
-        // Animation trigger for waveform can be managed via CSS
-      }, 100);
-    } else {
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
-      }
+    remindersCheckRef.current = setInterval(() => {
+      const now = new Date();
+      const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(
+        now.getMinutes()
+      ).padStart(2, "0")}`;
+      const currentDate = now.toISOString().split("T")[0];
+
+      reminders.forEach((reminder) => {
+        if (
+          reminder.date === currentDate &&
+          reminder.time === currentTime &&
+          reminder.status === "active"
+        ) {
+          // Trigger notification
+          setNotification({
+            id: reminder.id,
+            course: reminder.course,
+            timestamp: Date.now(),
+          });
+
+          // Update reminder status
+          setReminders((prev) =>
+            prev.map((r) => (r.id === reminder.id ? { ...r, status: "triggered" } : r))
+          );
+
+          // Auto-dismiss after 5 seconds
+          setTimeout(() => setNotification(null), 5000);
+
+          // Try to show browser notification if supported
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("Rappel Memo", {
+              body: `C'est l'heure de réviser ${reminder.course}!`,
+              icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%238ad9ff'><path d='M12 2L14.9 8.1L21 11L14.9 13.9L12 20L9.1 13.9L3 11L9.1 8.1L12 2Z'/></svg>",
+            });
+          }
+        }
+      });
+    }, 30000); // Check every 30 seconds instead of every minute for demo purposes
+
+    return () => clearInterval(remindersCheckRef.current);
+  }, [reminders]);
+
+  // Request notification permission
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
     }
-    return () => {
-      if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+  }, []);
+
+  const handleAddReminder = () => {
+    if (!formData.course || !formData.date || !formData.time) return;
+
+    const newReminder = {
+      id: Date.now(),
+      course: formData.course,
+      date: formData.date,
+      time: formData.time,
+      status: "active",
     };
-  }, [isRecording]);
+
+    setReminders([...reminders, newReminder]);
+    setFormData({ course: "", date: "", time: "" });
+  };
+
+  const handleDeleteReminder = (id) => {
+    setReminders(reminders.filter((r) => r.id !== id));
+  };
+
+  const handleDismissNotification = () => {
+    setNotification(null);
+  };
 
   const renderContent = useMemo(() => {
     if (activeTab === "home") {
@@ -69,7 +148,10 @@ function App() {
           <div className="folder-grid">
             {courses.map((course) => (
               <div className="folder-card" key={course.name}>
-                <div className="folder-illustration" style={{ "--accent": course.accent }}>
+                <div
+                  className="folder-illustration"
+                  style={{ "--accent": course.accent }}
+                >
                   {course.icon === "book" && <BookIcon />}
                   {course.icon === "chart" && <ChartIcon />}
                 </div>
@@ -92,7 +174,110 @@ function App() {
             </div>
           </div>
 
-          <div style={{ height: "12px" }} />
+          <div className="spacer" />
+        </div>
+      );
+    }
+
+    if (activeTab === "planning") {
+      return (
+        <div className="screen planning-screen">
+          <div className="topbar">
+            <div className="title-group">
+              <span className="eyebrow">Organisation</span>
+              <h1>Planification</h1>
+            </div>
+          </div>
+
+          <div className="planning-form-card">
+            <h3>Programmer un rappel</h3>
+            <div className="form-group">
+              <label htmlFor="course-input">Cours</label>
+              <input
+                id="course-input"
+                type="text"
+                placeholder="Ex: Épidémiologie"
+                value={formData.course}
+                onChange={(e) => setFormData({ ...formData, course: e.target.value })}
+              />
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="date-input">Date</label>
+                <input
+                  id="date-input"
+                  type="date"
+                  value={formData.date}
+                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="time-input">Heure</label>
+                <input
+                  id="time-input"
+                  type="time"
+                  value={formData.time}
+                  onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <button
+              className="submit-button"
+              onClick={handleAddReminder}
+              disabled={!formData.course || !formData.date || !formData.time}
+            >
+              <PlusIcon />
+              Ajouter le rappel
+            </button>
+          </div>
+
+          <div className="section-header">
+            <h2>Rappels programmés</h2>
+            <span className="badge">{reminders.filter((r) => r.status === "active").length}</span>
+          </div>
+
+          <div className="reminders-list">
+            {reminders.length === 0 ? (
+              <div className="empty-state">
+                <CalendarEmptyIcon />
+                <p>Aucun rappel programmé</p>
+                <small>Créez un rappel pour rester organisé</small>
+              </div>
+            ) : (
+              reminders.map((reminder) => (
+                <div
+                  key={reminder.id}
+                  className={`reminder-card ${reminder.status === "triggered" ? "triggered" : ""}`}
+                >
+                  <div className="reminder-content">
+                    <div className="reminder-icon">
+                      <ClockIcon />
+                    </div>
+                    <div className="reminder-details">
+                      <h4>{reminder.course}</h4>
+                      <p>
+                        {formatDate(reminder.date)} à {reminder.time}
+                      </p>
+                      {reminder.status === "triggered" && (
+                        <span className="triggered-badge">Déclenché</span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    className="delete-btn"
+                    onClick={() => handleDeleteReminder(reminder.id)}
+                    aria-label="Supprimer le rappel"
+                  >
+                    <TrashIcon />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="spacer" />
         </div>
       );
     }
@@ -115,7 +300,7 @@ function App() {
             </div>
           </div>
 
-          <div className="section-header" style={{ marginTop: "16px" }}>
+          <div className="section-header section-top">
             <h2>Préférences</h2>
           </div>
 
@@ -127,7 +312,7 @@ function App() {
             <SettingRow label="Thème IA" value="Moderne" />
           </div>
 
-          <div className="section-header" style={{ marginTop: "20px" }}>
+          <div className="section-header section-top">
             <h2>À propos</h2>
           </div>
 
@@ -142,7 +327,7 @@ function App() {
             Se déconnecter
           </button>
 
-          <div style={{ height: "12px" }} />
+          <div className="spacer" />
         </div>
       );
     }
@@ -168,12 +353,11 @@ function App() {
             <div className="recording-wave" aria-hidden="true">
               {waveformBars.map((height, index) => (
                 <span
-                  key={index}
+                  key={`${index}-${animationKeyRef.current}`}
                   className="wave-bar"
                   style={{
-                    height: `${height}px`,
-                    "--delay": `${index * 0.08}s`,
-                    "--playing": isRecording ? "1" : "0",
+                    height: `${isRecording ? height + (index % 3) * 10 : height}px`,
+                    animationDelay: `${index * 0.06}s`,
                   }}
                 />
               ))}
@@ -189,7 +373,10 @@ function App() {
 
         <div className="action-grid">
           {learningActions.map((action, index) => (
-            <button key={action.label} className={`action-button ${index === 0 ? "primary" : ""}`}>
+            <button
+              key={action.label}
+              className={`action-button ${index === 0 ? "primary" : ""}`}
+            >
               <div className="action-content">
                 <div className="action-icon">
                   {action.icon === "summary" && <SummaryIcon />}
@@ -207,19 +394,39 @@ function App() {
           <div className="mini-tag">Assistant IA</div>
           <h3>Dernière analyse</h3>
           <p>
-            Les points clés de votre cours de biostatistique ont été résumés avec un focus
-            sur la variance, l'intervalle de confiance et les tests de corrélation.
+            Les points clés de votre cours de biostatistique ont été résumés avec un
+            focus sur la variance, l'intervalle de confiance et les tests de corrélation.
           </p>
           <button className="view-button">Voir l'analyse complète →</button>
         </div>
 
-        <div style={{ height: "12px" }} />
+        <div className="spacer" />
       </div>
     );
-  }, [activeTab, isRecording]);
+  }, [activeTab, isRecording, animationKeyRef.current, reminders, formData]);
 
   return (
     <div className="app-shell">
+      {notification && (
+        <div className="notification-overlay">
+          <div className="notification-toast">
+            <div className="notification-icon">
+              <BellAlertIcon />
+            </div>
+            <div className="notification-content">
+              <h4>Rappel</h4>
+              <p>C'est l'heure de réviser <strong>{notification.course}</strong>!</p>
+            </div>
+            <button
+              className="notification-close"
+              onClick={handleDismissNotification}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="phone-frame">
         <div className="status-bar">
           <span className="time">09:41</span>
@@ -242,6 +449,7 @@ function App() {
               <span className="nav-icon">
                 {tab.icon === "home" && <HomeIcon />}
                 {tab.icon === "spark" && <SparkIcon />}
+                {tab.icon === "calendar" && <CalendarIcon />}
                 {tab.icon === "settings" && <SettingsIcon />}
               </span>
               <span className="nav-label">{tab.label}</span>
@@ -262,13 +470,13 @@ function SettingRow({ label, value }) {
   );
 }
 
-// SVG Icons with complete implementations
+// SVG Icons
 
 function SearchIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="11" cy="11" r="8" />
-      <path d="M21 21L16.65 16.65" />
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M16 16L21 21" />
     </svg>
   );
 }
@@ -278,6 +486,14 @@ function BellIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
       <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  );
+}
+
+function BellAlertIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <path d="M10 20H14C14 21.1 13.1 22 12 22C10.9 22 10 21.1 10 20ZM20 16.35C21.15 15.13 22 13.33 22 11.5C22 7.91 19.6 4.95 16.29 4.3C15.58 2.6 14.04 1.35 12.16 1.35C9.97 1.35 8.15 2.75 7.72 4.6C4.5 5.3 2 8.09 2 11.5C2 13.33 2.85 15.13 4 16.35V20C4 20.55 4.45 21 5 21H19C19.55 21 20 20.55 20 20V16.35Z" />
     </svg>
   );
 }
@@ -293,10 +509,10 @@ function FilterIcon() {
 function MicIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-      <line x1="12" y1="19" x2="12" y2="23" />
-      <line x1="8" y1="23" x2="16" y2="23" />
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0" />
+      <line x1="12" y1="18" x2="12" y2="22" />
+      <line x1="8" y1="22" x2="16" y2="22" />
     </svg>
   );
 }
@@ -304,8 +520,7 @@ function MicIcon() {
 function HomeIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-      <polyline points="9 22 9 12 15 12 15 22" />
+      <path d="M3 9.5L12 3l9 6.5V20a2 2 0 0 1-2 2h-4v-8H9v8H5a2 2 0 0 1-2-2z" />
     </svg>
   );
 }
@@ -313,7 +528,34 @@ function HomeIcon() {
 function SparkIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+      <path d="M12 2L14.9 8.1L21 11L14.9 13.9L12 20L9.1 13.9L3 11L9.1 8.1L12 2Z" />
+    </svg>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+      <path d="M16 2v4M8 2v4M3 10h18" />
+    </svg>
+  );
+}
+
+function CalendarEmptyIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" width="48" height="48" opacity="0.5">
+      <rect x="3" y="4" width="18" height="18" rx="2" />
+      <path d="M16 2v4M8 2v4M3 10h18" />
+    </svg>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <polyline points="12 6 12 12 16 14" />
     </svg>
   );
 }
@@ -322,7 +564,7 @@ function SettingsIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3" />
-      <path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m3.08 3.08l4.24 4.24M1 12h6m6 0h6M4.22 19.78l4.24-4.24m3.08-3.08l4.24-4.24M19.78 19.78l-4.24-4.24m-3.08-3.08l-4.24-4.24" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .7 1.8l.1.1a1.9 1.9 0 1 1-2.7 2.7l-.1-.1a1.7 1.7 0 0 0-1.8-.7 1.7 1.7 0 0 0-1 1.6V20a1.9 1.9 0 1 1-3.8 0v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.8.7l-.1.1a1.9 1.9 0 1 1-2.7-2.7l.1-.1a1.7 1.7 0 0 0 .7-1.8 1.7 1.7 0 0 0-1.6-1H4a1.9 1.9 0 1 1 0-3.8h.2a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.7-1.8l-.1-.1A1.9 1.9 0 1 1 7.7 3.6l.1.1a1.7 1.7 0 0 0 1.8.7 1.7 1.7 0 0 0 1-1.6V2.5a1.9 1.9 0 1 1 3.8 0v.2a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.8-.7l.1-.1A1.9 1.9 0 1 1 20.4 7.3l-.1.1a1.7 1.7 0 0 0-.7 1.8 1.7 1.7 0 0 0 1.6 1H21a1.9 1.9 0 1 1 0 3.8h-.2a1.7 1.7 0 0 0-1.6 1z" />
     </svg>
   );
 }
@@ -338,11 +580,9 @@ function BookIcon() {
 
 function ChartIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="12" y1="5" x2="12" y2="19" />
-      <line x1="5" y1="12" x2="19" y2="12" />
-      <line x1="8" y1="8" x2="16" y2="16" />
-      <line x1="16" y1="8" x2="8" y2="16" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 19V6m7 13V10m7 9V4" />
+      <path d="M3 19h18" />
     </svg>
   );
 }
@@ -360,10 +600,9 @@ function SummaryIcon() {
 function TranslateIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="15 1 22 1 22 8" />
-      <polyline points="9 23 2 23 2 16" />
-      <path d="M16 2L2 16" />
-      <path d="M8 22L22 8" />
+      <path d="M4 5h7l3 7h2L15 5h5" />
+      <path d="M9 9h8" />
+      <path d="M3 19h7l3-7h8" />
     </svg>
   );
 }
@@ -372,8 +611,7 @@ function FlashcardIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="5" width="18" height="14" rx="2" />
-      <line x1="7" y1="15" x2="17" y2="15" />
-      <line x1="7" y1="10" x2="17" y2="10" />
+      <path d="M7 9h10M7 13h10" />
     </svg>
   );
 }
@@ -416,8 +654,28 @@ function WifiIcon() {
 function BatteryIcon() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-      <rect x="1" y="6" width="22" height="12" rx="1" fill="none" stroke="currentColor" strokeWidth="1" />
-      <rect x="2" y="7" width="20" height="10" fill="currentColor" opacity="0.8" />
+      <rect x="2" y="7" width="18" height="10" rx="2" />
+      <rect x="20" y="10" width="2" height="4" rx="1" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <line x1="10" y1="11" x2="10" y2="17" />
+      <line x1="14" y1="11" x2="14" y2="17" />
     </svg>
   );
 }
