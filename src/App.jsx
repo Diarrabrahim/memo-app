@@ -3,6 +3,7 @@ import React, { useMemo, useState, useRef, useEffect } from "react";
 const tabs = [
   { id: "home", label: "Accueil", icon: "home" },
   { id: "memo", label: "Memo IA", icon: "spark" },
+  { id: "files", label: "Fichiers", icon: "files" },
   { id: "planning", label: "Planning", icon: "calendar" },
   { id: "settings", label: "Paramètres", icon: "settings" },
 ];
@@ -18,6 +19,63 @@ const learningActions = [
   { label: "Fiches de Révision", icon: "flashcard" },
 ];
 
+const specialties = [
+  { id: "epid", label: "Épidémiologie", color: "#6bc7ff" },
+  { id: "biostat", label: "Biostatistique", color: "#7ef0c1" },
+  { id: "method", label: "Méthodologie", color: "#ffa066" },
+];
+
+const documentsData = [
+  {
+    id: 1,
+    title: "Introduction à l'Épidémiologie",
+    specialty: "epid",
+    date: "2026-10-08",
+    duration: "45 min",
+    type: "audio",
+  },
+  {
+    id: 2,
+    title: "Tests Statistiques Avancés",
+    specialty: "biostat",
+    date: "2026-10-07",
+    duration: "62 min",
+    type: "audio",
+  },
+  {
+    id: 3,
+    title: "Méthodologie de Recherche",
+    specialty: "method",
+    date: "2026-10-06",
+    duration: "38 min",
+    type: "audio",
+  },
+  {
+    id: 4,
+    title: "Épidémiologie des Maladies Infectieuses",
+    specialty: "epid",
+    date: "2026-10-05",
+    duration: "55 min",
+    type: "audio",
+  },
+  {
+    id: 5,
+    title: "Analyse de Variance (ANOVA)",
+    specialty: "biostat",
+    date: "2026-10-04",
+    duration: "41 min",
+    type: "audio",
+  },
+  {
+    id: 6,
+    title: "Design d'Études Cliniques",
+    specialty: "method",
+    date: "2026-10-03",
+    duration: "58 min",
+    type: "audio",
+  },
+];
+
 const waveformBars = Array.from({ length: 15 }, (_, index) => 16 + ((index * 9) % 22));
 
 function App() {
@@ -29,66 +87,79 @@ function App() {
   ]);
   const [formData, setFormData] = useState({ course: "", date: "", time: "" });
   const [notification, setNotification] = useState(null);
+  const [selectedSpecialty, setSelectedSpecialty] = useState(null);
+  const [expandedDoc, setExpandedDoc] = useState(null);
   const animationKeyRef = useRef(0);
-  const remindersCheckRef = useRef(null);
+  const reminderTimerRef = useRef(null);
 
-  // Format date for display
   const formatDate = (dateStr) => {
     const date = new Date(dateStr);
     const today = new Date();
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    
+
     if (dateStr === today.toISOString().split("T")[0]) return "Aujourd'hui";
     if (dateStr === tomorrow.toISOString().split("T")[0]) return "Demain";
-    return date.toLocaleDateString("fr-FR", { weekday: "short", month: "short", day: "numeric" });
+    return date.toLocaleDateString("fr-FR", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
   };
 
-  // Check reminders every minute
+  const filteredDocuments = useMemo(() => {
+    if (!selectedSpecialty) return documentsData;
+    return documentsData.filter((doc) => doc.specialty === selectedSpecialty);
+  }, [selectedSpecialty]);
+
   useEffect(() => {
-    remindersCheckRef.current = setInterval(() => {
+    if (!reminders.length) return;
+
+    const checkReminders = () => {
       const now = new Date();
+      const currentDate = now.toISOString().split("T")[0];
       const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(
         now.getMinutes()
       ).padStart(2, "0")}`;
-      const currentDate = now.toISOString().split("T")[0];
 
       reminders.forEach((reminder) => {
         if (
+          reminder.status === "active" &&
           reminder.date === currentDate &&
-          reminder.time === currentTime &&
-          reminder.status === "active"
+          reminder.time === currentTime
         ) {
-          // Trigger notification
           setNotification({
             id: reminder.id,
             course: reminder.course,
-            timestamp: Date.now(),
           });
 
-          // Update reminder status
           setReminders((prev) =>
-            prev.map((r) => (r.id === reminder.id ? { ...r, status: "triggered" } : r))
+            prev.map((r) =>
+              r.id === reminder.id ? { ...r, status: "triggered" } : r
+            )
           );
 
-          // Auto-dismiss after 5 seconds
-          setTimeout(() => setNotification(null), 5000);
-
-          // Try to show browser notification if supported
           if ("Notification" in window && Notification.permission === "granted") {
             new Notification("Rappel Memo", {
-              body: `C'est l'heure de réviser ${reminder.course}!`,
-              icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%238ad9ff'><path d='M12 2L14.9 8.1L21 11L14.9 13.9L12 20L9.1 13.9L3 11L9.1 8.1L12 2Z'/></svg>",
+              body: `C'est l'heure de réviser ${reminder.course} !`,
+              icon:
+                "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%238ad9ff'><path d='M12 2L14.9 8.1L21 11L14.9 13.9L12 20L9.1 13.9L3 11L9.1 8.1L12 2Z'/></svg>",
             });
           }
+
+          setTimeout(() => setNotification(null), 5000);
         }
       });
-    }, 30000); // Check every 30 seconds instead of every minute for demo purposes
+    };
 
-    return () => clearInterval(remindersCheckRef.current);
+    reminderTimerRef.current = setInterval(checkReminders, 30000);
+    checkReminders();
+
+    return () => {
+      if (reminderTimerRef.current) clearInterval(reminderTimerRef.current);
+    };
   }, [reminders]);
 
-  // Request notification permission
   useEffect(() => {
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
@@ -106,16 +177,24 @@ function App() {
       status: "active",
     };
 
-    setReminders([...reminders, newReminder]);
+    setReminders((prev) => [...prev, newReminder]);
     setFormData({ course: "", date: "", time: "" });
   };
 
   const handleDeleteReminder = (id) => {
-    setReminders(reminders.filter((r) => r.id !== id));
+    setReminders((prev) => prev.filter((r) => r.id !== id));
   };
 
   const handleDismissNotification = () => {
     setNotification(null);
+  };
+
+  const getSpecialtyLabel = (specialtyId) => {
+    return specialties.find((s) => s.id === specialtyId)?.label || "";
+  };
+
+  const getSpecialtyColor = (specialtyId) => {
+    return specialties.find((s) => s.id === specialtyId)?.color || "#999";
   };
 
   const renderContent = useMemo(() => {
@@ -179,6 +258,112 @@ function App() {
       );
     }
 
+    if (activeTab === "files") {
+      return (
+        <div className="screen files-screen">
+          <div className="topbar">
+            <div className="title-group">
+              <span className="eyebrow">Documents</span>
+              <h1>Mes Fichiers</h1>
+            </div>
+          </div>
+
+          <div className="filter-section">
+            <button
+              className={`filter-badge ${selectedSpecialty === null ? "active" : ""}`}
+              onClick={() => setSelectedSpecialty(null)}
+            >
+              Tous
+            </button>
+            {specialties.map((specialty) => (
+              <button
+                key={specialty.id}
+                className={`filter-badge ${selectedSpecialty === specialty.id ? "active" : ""}`}
+                onClick={() => setSelectedSpecialty(specialty.id)}
+                style={{
+                  "--badge-color": specialty.color,
+                }}
+              >
+                {specialty.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="documents-section">
+            <div className="section-header">
+              <h2>
+                {selectedSpecialty
+                  ? getSpecialtyLabel(selectedSpecialty)
+                  : "Tous les documents"}
+              </h2>
+              <span className="badge">{filteredDocuments.length}</span>
+            </div>
+
+            <div className="documents-list">
+              {filteredDocuments.length === 0 ? (
+                <div className="empty-state">
+                  <FileEmptyIcon />
+                  <p>Aucun document trouvé</p>
+                  <small>Enregistrez un cours pour commencer</small>
+                </div>
+              ) : (
+                filteredDocuments.map((doc) => (
+                  <div
+                    key={doc.id}
+                    className={`document-card ${expandedDoc === doc.id ? "expanded" : ""}`}
+                  >
+                    <div className="document-header">
+                      <div className="document-icon">
+                        <AudioIcon />
+                      </div>
+
+                      <div className="document-info">
+                        <h4>{doc.title}</h4>
+                        <p>
+                          {formatDate(doc.date)} • {doc.duration}
+                        </p>
+                      </div>
+
+                      <span
+                        className="specialty-badge"
+                        style={{ "--specialty-color": getSpecialtyColor(doc.specialty) }}
+                      >
+                        {getSpecialtyLabel(doc.specialty)}
+                      </span>
+                    </div>
+
+                    {expandedDoc === doc.id && (
+                      <div className="document-actions">
+                        <button className="action-link">
+                          <TranscriptIcon />
+                          Lire la transcription
+                        </button>
+                        <button className="action-link">
+                          <SummarySmallIcon />
+                          Voir le résumé
+                        </button>
+                      </div>
+                    )}
+
+                    <button
+                      className="expand-btn"
+                      onClick={() =>
+                        setExpandedDoc(expandedDoc === doc.id ? null : doc.id)
+                      }
+                    >
+                      <ChevronIcon />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="spacer" />
+        </div>
+      );
+    }
+
     if (activeTab === "planning") {
       return (
         <div className="screen planning-screen">
@@ -191,14 +376,17 @@ function App() {
 
           <div className="planning-form-card">
             <h3>Programmer un rappel</h3>
+
             <div className="form-group">
-              <label htmlFor="course-input">Cours</label>
+              <label htmlFor="course-input">Titre du cours</label>
               <input
                 id="course-input"
                 type="text"
-                placeholder="Ex: Épidémiologie"
+                placeholder="Ex: Révision Biostatistique"
                 value={formData.course}
-                onChange={(e) => setFormData({ ...formData, course: e.target.value })}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, course: e.target.value }))
+                }
               />
             </div>
 
@@ -209,16 +397,21 @@ function App() {
                   id="date-input"
                   type="date"
                   value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, date: e.target.value }))
+                  }
                 />
               </div>
+
               <div className="form-group">
                 <label htmlFor="time-input">Heure</label>
                 <input
                   id="time-input"
                   type="time"
                   value={formData.time}
-                  onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, time: e.target.value }))
+                  }
                 />
               </div>
             </div>
@@ -235,7 +428,9 @@ function App() {
 
           <div className="section-header">
             <h2>Rappels programmés</h2>
-            <span className="badge">{reminders.filter((r) => r.status === "active").length}</span>
+            <span className="badge">
+              {reminders.filter((r) => r.status === "active").length}
+            </span>
           </div>
 
           <div className="reminders-list">
@@ -249,12 +444,15 @@ function App() {
               reminders.map((reminder) => (
                 <div
                   key={reminder.id}
-                  className={`reminder-card ${reminder.status === "triggered" ? "triggered" : ""}`}
+                  className={`reminder-card ${
+                    reminder.status === "triggered" ? "triggered" : ""
+                  }`}
                 >
                   <div className="reminder-content">
                     <div className="reminder-icon">
                       <ClockIcon />
                     </div>
+
                     <div className="reminder-details">
                       <h4>{reminder.course}</h4>
                       <p>
@@ -265,6 +463,7 @@ function App() {
                       )}
                     </div>
                   </div>
+
                   <button
                     className="delete-btn"
                     onClick={() => handleDeleteReminder(reminder.id)}
@@ -403,7 +602,7 @@ function App() {
         <div className="spacer" />
       </div>
     );
-  }, [activeTab, isRecording, animationKeyRef.current, reminders, formData]);
+  }, [activeTab, isRecording, animationKeyRef.current, reminders, formData, selectedSpecialty, expandedDoc, filteredDocuments]);
 
   return (
     <div className="app-shell">
@@ -415,12 +614,11 @@ function App() {
             </div>
             <div className="notification-content">
               <h4>Rappel</h4>
-              <p>C'est l'heure de réviser <strong>{notification.course}</strong>!</p>
+              <p>
+                C'est l'heure de réviser <strong>{notification.course}</strong> !
+              </p>
             </div>
-            <button
-              className="notification-close"
-              onClick={handleDismissNotification}
-            >
+            <button className="notification-close" onClick={handleDismissNotification}>
               ✕
             </button>
           </div>
@@ -449,6 +647,7 @@ function App() {
               <span className="nav-icon">
                 {tab.icon === "home" && <HomeIcon />}
                 {tab.icon === "spark" && <SparkIcon />}
+                {tab.icon === "files" && <FilesIcon />}
                 {tab.icon === "calendar" && <CalendarIcon />}
                 {tab.icon === "settings" && <SettingsIcon />}
               </span>
@@ -533,6 +732,15 @@ function SparkIcon() {
   );
 }
 
+function FilesIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+      <polyline points="13 2 13 9 20 9" />
+    </svg>
+  );
+}
+
 function CalendarIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -547,6 +755,15 @@ function CalendarEmptyIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" width="48" height="48" opacity="0.5">
       <rect x="3" y="4" width="18" height="18" rx="2" />
       <path d="M16 2v4M8 2v4M3 10h18" />
+    </svg>
+  );
+}
+
+function FileEmptyIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" width="48" height="48" opacity="0.5">
+      <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+      <polyline points="13 2 13 9 20 9" />
     </svg>
   );
 }
@@ -593,6 +810,27 @@ function SummaryIcon() {
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
       <line x1="9" y1="10" x2="15" y2="10" />
       <line x1="9" y1="14" x2="13" y2="14" />
+    </svg>
+  );
+}
+
+function SummarySmallIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="16" height="16">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      <line x1="9" y1="10" x2="15" y2="10" />
+      <line x1="9" y1="14" x2="13" y2="14" />
+    </svg>
+  );
+}
+
+function TranscriptIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="16" height="16">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="12" y1="19" x2="8" y2="19" />
+      <line x1="16" y1="13" x2="8" y2="13" />
     </svg>
   );
 }
@@ -676,6 +914,24 @@ function TrashIcon() {
       <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
       <line x1="10" y1="11" x2="10" y2="17" />
       <line x1="14" y1="11" x2="14" y2="17" />
+    </svg>
+  );
+}
+
+function AudioIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <path d="M15.54 5.47a7 7 0 0 1 0 9.93" />
+      <path d="M17.65 3.36a11 11 0 0 1 0 15.68" />
+    </svg>
+  );
+}
+
+function ChevronIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 12 15 18 9" />
     </svg>
   );
 }
